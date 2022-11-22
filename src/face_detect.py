@@ -5,6 +5,7 @@ import cv2
 import time
 import dlib
 from helpers import *
+from scipy.spatial import ConvexHull
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor("G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\shape_predictor_68_face_landmarks.dat")
@@ -31,7 +32,16 @@ class face_vid():
             shape = predictor(gray, rect)
 
         self.landmark_coord = np.array([(p.x, p.y) for p in shape.parts()])
-        convex_hull_ind = sorted(cv2.convexHull(self.landmark_coord, returnPoints=False))
+        print(f"Number of landmark points detected: {len(self.landmark_coord)}")
+        scipy_convexHull = ConvexHull(self.landmark_coord)
+        print(f"Length Scipy convex hull: {scipy_convexHull.nsimplex}")
+        self.rect = cv2.boundingRect(cv2.convexHull(self.landmark_coord))
+        self.center_rect = ((self.rect[0]+int(self.rect[2]/2), self.rect[1]+int(self.rect[3]/2)))
+        convex_hull_ind = (cv2.convexHull(self.landmark_coord, returnPoints=False))
+
+        # experimental
+        # convex_hull_ind = np.arange(0, 27, 1, dtype= int)
+        print(f"Number of convex hull ind: {len(convex_hull_ind)}")
 
         for i in range(len(convex_hull_ind)):
             self.convex_hull.append(tuple(self.landmark_coord[int(convex_hull_ind[i])]))
@@ -49,44 +59,48 @@ class face_vid():
     def tps_swap():
         pass
 
-    def triangular_swap(self, source_frame, target_frame, target_hull, target_mask):
-        # NOT WORKING YET
-        rect = (0, 0, target_frame.shape[1], target_frame.shape[0])
-        center_rect = ((rect[0]+int(rect[2]/2), rect[1]+int(rect[3]/2)))
-
-        target_frame_copy = np.copy(target_frame)
-
-        dt = calculateDelaunayTriangles(rect, target_hull)
+    def gen_triangle(self):
+        dt = calculateDelaunayTriangles(self.rect, self.convex_hull)
         if len(dt) == 0:
             print("No Triangle generated")
-            return
+            
+        tris = []
 
         for i in range(len(dt)):
-            t1 = []
-            t2 = []
-            
-        #get points for img1, img2 corresponding to the triangles
-        for j in range(3):
-            t1.append(self.convex_hull[dt[i][j]])
-            t2.append(target_hull[dt[i][j]])
-        
-        warpTriangle(source_frame, target_frame_copy, t1, t2)
+            tri = []
+            for j in range(3):
+                tri.append(self.convex_hull[dt[i][j]])
 
-        swapped_target_frame =  cv2.seamlessClone(
-            np.uint8(target_frame_copy), 
-            target_frame, 
-            target_mask, 
-            center_rect, 
-            cv2.NORMAL_CLONE
-        )
-        # return swapped_target_frame
-        pass
+            tris.append(tri)
+
+        return tris
 
 
     def release(self):
         self.cap.release()
         self.out.release()
 
+
+def triangular_swap(vid_A, frame_A, vid_B, frame_B):
+    # TODO: Handling matching of triangles
+
+    tris_A = vid_A.gen_triangle()
+    tris_B = vid_B.gen_triangle()
+    
+    copy_frame = frame_B.copy()
+
+    for i in range(len(tris_A)):
+        warpTriangle(frame_A, frame_B, tris_A[i], tris_B[i])
+
+    swapped_frame_B = cv2.seamlessClone(
+        np.uint8(copy_frame),
+        frame_B,
+        vid_B.mask,
+        vid_B.center_rect,
+        cv2.NORMAL_CLONE
+    )
+
+    return swapped_frame_B
 
 
 if __name__ == '__main__':
@@ -104,11 +118,18 @@ if __name__ == '__main__':
         vid_A.landmark_detect(frame_A, False)
         vid_B.landmark_detect(frame_B, False)
 
-        processed_frame_A = vid_A.triangular_swap(
+        # processed_frame_A = vid_A.triangular_swap(
+        #     frame_A,
+        #     frame_B,
+        #     vid_B.convex_hull,
+        #     vid_B.mask
+        # )
+
+        processed_frame_A = triangular_swap(
+            vid_A,
             frame_A,
-            frame_B,
-            vid_B.convex_hull,
-            vid_A.mask
+            vid_B,
+            frame_B
         )
 
         # processed_frame_A = vid_A.triangular_swap(frame_A)
