@@ -18,7 +18,7 @@ class face_vid():
         self.out = cv2.VideoWriter(
             self.path + "_landmarked.avi",
             cv2.VideoWriter_fourcc('M','J','P','G'), 
-            10, 
+            25, 
             (int(self.cap.get(3)), int(self.cap.get(4)))
         )
 
@@ -31,17 +31,21 @@ class face_vid():
         for rect in rects:
             shape = predictor(gray, rect)
 
-        self.landmark_coord = np.array([(p.x, p.y) for p in shape.parts()])
-        print(f"Number of landmark points detected: {len(self.landmark_coord)}")
-        scipy_convexHull = ConvexHull(self.landmark_coord)
-        print(f"Length Scipy convex hull: {scipy_convexHull.nsimplex}")
-        self.rect = cv2.boundingRect(cv2.convexHull(self.landmark_coord))
+        # self.landmark_coord = np.array([(p.x, p.y) for p in shape.parts()])
+        self.landmark_coord = []
+        for i in range(shape.num_parts):
+            self.landmark_coord.append((shape.part(i).x, shape.part(i). y))
+
+        # print(f"Number of landmark points detected: {len(self.landmark_coord)}")
+        # scipy_convexHull = ConvexHull(self.landmark_coord)
+        # print(f"Length Scipy convex hull: {scipy_convexHull.nsimplex}")
+        self.rect = cv2.boundingRect(cv2.convexHull(np.array(self.landmark_coord)))
         self.center_rect = ((self.rect[0]+int(self.rect[2]/2), self.rect[1]+int(self.rect[3]/2)))
-        convex_hull_ind = (cv2.convexHull(self.landmark_coord, returnPoints=False))
+        convex_hull_ind = (cv2.convexHull(np.array(self.landmark_coord), returnPoints=False))
 
         # experimental
-        # convex_hull_ind = np.arange(0, 27, 1, dtype= int)
-        print(f"Number of convex hull ind: {len(convex_hull_ind)}")
+        # convex_hull_ind = np.arange(0, 27, 1, self.dtype= int)
+        # print(f"Number of convex hull ind: {len(convex_hull_ind)}")
 
         for i in range(len(convex_hull_ind)):
             self.convex_hull.append(tuple(self.landmark_coord[int(convex_hull_ind[i])]))
@@ -56,43 +60,68 @@ class face_vid():
 
             return frame
 
+
+
     def tps_swap():
         pass
 
     def gen_triangle(self):
-        dt = calculateDelaunayTriangles(self.rect, self.convex_hull)
-        if len(dt) == 0:
+        """
+        Perform Delaunay triangulation on the landmark points, then return a list
+        of list, each element is the indices of the landmark coord points that 
+        make up 
+        """
+        self.triangle_vertices = calculateDelaunayTriangles(
+            self.rect, 
+            self.landmark_coord
+        )
+        if len(self.triangle_vertices) == 0:
             print("No Triangle generated")
             
-        tris = []
+        self.tris = []
 
-        for i in range(len(dt)):
+        for i in range(len(self.triangle_vertices)):
             tri = []
             for j in range(3):
-                tri.append(self.convex_hull[dt[i][j]])
+                tri.append(self.landmark_coord[self.triangle_vertices[i][j]])
 
-            tris.append(tri)
+            self.tris.append(tri)
 
-        return tris
+    def gen_matched_triangle(self, target_triangle_vertices):
+        """
+        Take in the triangles from target image, this generate triangles for 
+        the source image - each match up to a specific triangle from target.
 
+        Args:
+            source_triangles (_type_): _description_
+        """
+        self.tris = []
+
+        for i in range(len(target_triangle_vertices)):
+            t1 = []
+            for j in range(3):
+                t1.append(self.landmark_coord[target_triangle_vertices[i][j]])
+            
+            self.tris.append(np.int32(t1))
 
     def release(self):
         self.cap.release()
         self.out.release()
 
 
-def triangular_swap(vid_A, frame_A, vid_B, frame_B):
-    # TODO: Handling matching of triangles
+def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
+    # gen triangle for target
+    vid_B.gen_triangle()
+    # gen matching triangle for source
+    vid_A.gen_matched_triangle(vid_B.triangle_vertices)
 
-    tris_A = vid_A.gen_triangle()
-    tris_B = vid_B.gen_triangle()
-    
+    # ended matching triangles
     copy_frame = frame_B.copy()
 
-    for i in range(len(tris_A)):
-        warpTriangle(frame_A, frame_B, tris_A[i], tris_B[i])
+    for tri1,tri2 in zip(vid_A.tris, vid_B.tris):
+        warpTriangle(frame_A, copy_frame, tri1, tri2)
 
-    swapped_frame_B = cv2.seamlessClone(
+    swapped = cv2.seamlessClone(
         np.uint8(copy_frame),
         frame_B,
         vid_B.mask,
@@ -100,13 +129,19 @@ def triangular_swap(vid_A, frame_A, vid_B, frame_B):
         cv2.NORMAL_CLONE
     )
 
-    return swapped_frame_B
+    return swapped
 
+#simplify transformation so that we dont need to use all convex hall
+#emotion animation machine learning
+# thin plate spline - check with the professor
+# interpolate frame if teh frame count is different 
+# rewind or stochastic select older frames in order to account for frame count mix match
+# simple is best
 
 if __name__ == '__main__':
     # TODO: Handling of vids with different duration?
-    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
-    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
+    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Mrrobot-1_formatted_11-17-2022_22_.m4v')
+    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Frankunderwood-1_formatted_11-17-2022_22_.m4v')
 
     while (vid_A.cap.isOpened() and vid_B.cap.isOpened()):
         ret_A, frame_A = vid_A.cap.read()
@@ -124,7 +159,7 @@ if __name__ == '__main__':
         #     vid_B.convex_hull,
         #     vid_B.mask
         # )
-
+        ''' Swapping vid A face to vid B'''
         processed_frame_A = triangular_swap(
             vid_A,
             frame_A,
@@ -132,16 +167,20 @@ if __name__ == '__main__':
             frame_B
         )
 
-        # processed_frame_A = vid_A.triangular_swap(frame_A)
-        # processed_frame_B = vid_B.triangular_swap(frame_B)
+        processed_frame_B = triangular_swap(
+            vid_B,
+            frame_B,
+            vid_A,
+            frame_A
+        )
 
 
         vid_A.out.write(processed_frame_A)
-        # vid_B.out.write(processed_frame_B)
+        vid_B.out.write(processed_frame_B)
 
 
         cv2.imshow("vidA", processed_frame_A)
-        # cv2.imshow("vidB", processed_frame_B)
+        cv2.imshow("vidB", processed_frame_B)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
