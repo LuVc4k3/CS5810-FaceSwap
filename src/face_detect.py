@@ -60,8 +60,6 @@ class face_vid():
 
             return frame
 
-
-
     def tps_swap():
         pass
 
@@ -140,10 +138,13 @@ def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
 
 if __name__ == '__main__':
     # TODO: Handling of vids with different duration?
-    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Mrrobot-1_formatted_11-17-2022_22_.m4v')
-    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Frankunderwood-1_formatted_11-17-2022_22_.m4v')
+    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
+    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
 
-    while (vid_A.cap.isOpened() and vid_B.cap.isOpened()):
+    frame_count = 0
+    while (vid_A.cap.isOpened() and vid_B.cap.isOpened() and frame_count < 169):
+        frame_count += 1
+        print(f"frame count: {frame_count}")
         ret_A, frame_A = vid_A.cap.read()
         ret_B, frame_B = vid_B.cap.read()
 
@@ -175,8 +176,8 @@ if __name__ == '__main__':
         )
 
 
-        vid_A.out.write(processed_frame_A)
-        vid_B.out.write(processed_frame_B)
+        vid_B.out.write(processed_frame_A)
+        vid_A.out.write(processed_frame_B)
 
 
         cv2.imshow("vidA", processed_frame_A)
