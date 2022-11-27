@@ -16,7 +16,7 @@ class face_vid():
         self.path = vid_path
         self.cap = cv2.VideoCapture(self.path)
         self.out = cv2.VideoWriter(
-            self.path + "_landmarked.avi",
+            self.path + "tps_swapped.avi",
             cv2.VideoWriter_fourcc('M','J','P','G'), 
             25, 
             (int(self.cap.get(3)), int(self.cap.get(4)))
@@ -60,8 +60,7 @@ class face_vid():
 
             return frame
 
-    def tps_swap():
-        pass
+
 
     def gen_triangle(self):
         """
@@ -106,6 +105,35 @@ class face_vid():
         self.cap.release()
         self.out.release()
 
+def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
+
+
+    tps = cv2.createThinPlateSplineShapeTransformer()
+
+    source_pts = np.array(vid_A.landmark_coord).astype(np.float32)
+    target_pts = np.array(vid_B.landmark_coord).astype(np.float32)
+
+    source_pts = source_pts.reshape(-1, len(source_pts), 2)
+    target_pts = target_pts.reshape(-1, len(target_pts), 2)
+    # why is this needed?
+    matches = []
+    for i in range(len(source_pts[0])):
+        matches.append(cv2.DMatch(i, i, 0))
+
+    tps.estimateTransformation(target_pts, source_pts, matches)
+
+    warped = tps.warpImage(vid_A.masked_face)
+    
+    swapped = cv2.seamlessClone(
+        np.uint8(warped),
+        frame_B,
+        vid_B.mask,
+        vid_B.center_rect,
+        cv2.NORMAL_CLONE
+    )
+
+    
+    return swapped
 
 def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
     # gen triangle for target
@@ -138,15 +166,22 @@ def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
 
 if __name__ == '__main__':
     # TODO: Handling of vids with different duration?
-    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
-    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
+    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Mrrobot-1_formatted_11-17-2022_22_.m4v')
+    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Frankunderwood-1_formatted_11-17-2022_22_.m4v')
 
+    # vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
+    # vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
     frame_count = 0
     while (vid_A.cap.isOpened() and vid_B.cap.isOpened() and frame_count < 169):
         frame_count += 1
         print(f"frame count: {frame_count}")
         ret_A, frame_A = vid_A.cap.read()
         ret_B, frame_B = vid_B.cap.read()
+
+        # optional for tps
+        frame_A = cv2.resize(frame_A, (1280, 720))
+        frame_B = cv2.resize(frame_B, (1280, 720))
+
 
         # processed_frame_A = vid_A.landmark_detect(frame_A, False)
         # processed_frame_B = vid_B.landmark_detect(frame_B, False)
@@ -160,25 +195,42 @@ if __name__ == '__main__':
         #     vid_B.convex_hull,
         #     vid_B.mask
         # )
-        ''' Swapping vid A face to vid B'''
-        processed_frame_A = triangular_swap(
+        ''' Triangulation swap '''
+        # processed_frame_A = triangular_swap(
+        #     vid_A,
+        #     frame_A,
+        #     vid_B,
+        #     frame_B
+        # )
+
+        # processed_frame_B = triangular_swap(
+        #     vid_B,
+        #     frame_B,
+        #     vid_A,
+        #     frame_A
+        # )
+
+
+        # vid_B.out.write(processed_frame_A)
+        # vid_A.out.write(processed_frame_B)
+
+        ''' TPS sawp '''
+   
+        processed_frame_A = tps_swap(
             vid_A,
             frame_A,
             vid_B,
             frame_B
         )
-
-        processed_frame_B = triangular_swap(
+        processed_frame_B = tps_swap(
             vid_B,
             frame_B,
             vid_A,
             frame_A
         )
 
-
         vid_B.out.write(processed_frame_A)
         vid_A.out.write(processed_frame_B)
-
 
         cv2.imshow("vidA", processed_frame_A)
         cv2.imshow("vidB", processed_frame_B)
