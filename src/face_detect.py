@@ -172,7 +172,9 @@ if __name__ == '__main__':
     # vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
     # vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
     frame_count = 0
-    while (vid_A.cap.isOpened() and vid_B.cap.isOpened() and frame_count < 169):
+    vid_A_finished, vid_B_finished = False, False
+
+    while (vid_A.cap.isOpened() and vid_B.cap.isOpened()):
         frame_count += 1
         print(f"frame count: {frame_count}")
         ret_A, frame_A = vid_A.cap.read()
@@ -181,6 +183,20 @@ if __name__ == '__main__':
         # optional for tps
         frame_A = cv2.resize(frame_A, (1280, 720))
         frame_B = cv2.resize(frame_B, (1280, 720))
+        if not ret_A:
+            print("A finished")
+            vid_A_finished = True
+            vid_A.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ret_A, frame_A = vid_A.cap.read()
+
+        if not ret_B:
+            print("B finished")
+            vid_B_finished = True
+            vid_B.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ret_B, frame_B = vid_B.cap.read()
+
+        if vid_A_finished and vid_B_finished:
+            break
 
 
         # processed_frame_A = vid_A.landmark_detect(frame_A, False)
@@ -229,8 +245,11 @@ if __name__ == '__main__':
             frame_A
         )
 
-        vid_B.out.write(processed_frame_A)
-        vid_A.out.write(processed_frame_B)
+
+        if not vid_B_finished:
+            vid_B.out.write(processed_frame_A)
+        if not vid_A_finished:
+            vid_A.out.write(processed_frame_B)
 
         cv2.imshow("vidA", processed_frame_A)
         cv2.imshow("vidB", processed_frame_B)
