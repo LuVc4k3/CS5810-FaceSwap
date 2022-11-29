@@ -8,7 +8,7 @@ from helpers import *
 from scipy.spatial import ConvexHull
 
 detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor("G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\shape_predictor_68_face_landmarks.dat")
+predictor = dlib.shape_predictor("../resources/shape_predictor_68_face_landmarks.dat")
 
 
 class face_vid():
@@ -166,8 +166,8 @@ def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
 
 if __name__ == '__main__':
     # TODO: Handling of vids with different duration?
-    vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Mrrobot-1_formatted_11-17-2022_22_.m4v')
-    vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\Frankunderwood-1_formatted_11-17-2022_22_.m4v')
+    vid_A = face_vid('../resources/MrRobot.mp4')
+    vid_B = face_vid('../resources/FrankUnderwood.mp4')
 
     # vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
     # vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
