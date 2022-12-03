@@ -10,42 +10,60 @@ from scipy.spatial import ConvexHull
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor("G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\shape_predictor_68_face_landmarks.dat")
 
+OPT_FLOW_WEIGHT = 0.7
 
 class face_vid():
     def __init__(self, vid_path):
         self.path = vid_path
         self.cap = cv2.VideoCapture(self.path)
         self.out = cv2.VideoWriter(
-            self.path + "tps_swapped.avi",
+            self.path + "_OpticalFlow_tps_swapped.avi",
             cv2.VideoWriter_fourcc('M','J','P','G'), 
             25, 
             (int(self.cap.get(3)), int(self.cap.get(4)))
         )
 
-    def landmark_detect(self, frame, show_landmark=True):
+        self.orig_w = round(self.cap.get(3))
+        self.orig_h = round(self.cap.get(4))
+        self.frame_list = []
+        self.landmark_coord = []
+
+    def landmark_detect(self, frame, use_optical_flow = False, show_landmark=False):
         self.convex_hull = []
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         self.mask = np.zeros_like(gray)
         rects = detector(gray)
-        # go through the face bounding boxes if multiple faces
         for rect in rects:
             shape = predictor(gray, rect)
 
-        # self.landmark_coord = np.array([(p.x, p.y) for p in shape.parts()])
-        self.landmark_coord = []
-        for i in range(shape.num_parts):
-            self.landmark_coord.append((shape.part(i).x, shape.part(i). y))
+        if not use_optical_flow or len(self.frame_list) < 2:
+            self.landmark_coord = []
+            for i in range(shape.num_parts):
+                self.landmark_coord.append((shape.part(i).x, shape.part(i). y))
+        
+        else:
+            old_landmark_coord = np.array(self.landmark_coord).astype(np.float32)
+            optical_flow_landmark_coord = self._optical_flow_track(
+                self.frame_list[-2],
+                self.frame_list[-1],
+                old_landmark_coord
+            )
 
-        # print(f"Number of landmark points detected: {len(self.landmark_coord)}")
-        # scipy_convexHull = ConvexHull(self.landmark_coord)
-        # print(f"Length Scipy convex hull: {scipy_convexHull.nsimplex}")
+            detected_landmark_coord = []
+            for i in range(shape.num_parts):
+                detected_landmark_coord.append([shape.part(i).x, shape.part(i). y])
+
+            detected_landmark_coord = np.array(detected_landmark_coord)
+
+            tracked_landmark_coord = OPT_FLOW_WEIGHT*optical_flow_landmark_coord + \
+                (1 - OPT_FLOW_WEIGHT)*detected_landmark_coord
+
+            self.landmark_coord = [(round(x[0]), round(x[1])) for x in tracked_landmark_coord]
+                
         self.rect = cv2.boundingRect(cv2.convexHull(np.array(self.landmark_coord)))
         self.center_rect = ((self.rect[0]+int(self.rect[2]/2), self.rect[1]+int(self.rect[3]/2)))
         convex_hull_ind = (cv2.convexHull(np.array(self.landmark_coord), returnPoints=False))
 
-        # experimental
-        # convex_hull_ind = np.arange(0, 27, 1, self.dtype= int)
-        # print(f"Number of convex hull ind: {len(convex_hull_ind)}")
 
         for i in range(len(convex_hull_ind)):
             self.convex_hull.append(tuple(self.landmark_coord[int(convex_hull_ind[i])]))
@@ -59,8 +77,6 @@ class face_vid():
                 cv2.polylines(frame, [self.convex_hull], True, (255, 0, 0))
 
             return frame
-
-
 
     def gen_triangle(self):
         """
@@ -105,13 +121,38 @@ class face_vid():
         self.cap.release()
         self.out.release()
 
+    def _optical_flow_track(self, old_frame, current_frame, p0):
+        print("optical_flow")
+        # default lk params
+        lk_params = dict( 
+            winSize  = (25, 25),
+            maxLevel = 2,
+            criteria = (
+            cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03
+            )
+        )
+
+        old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+        current_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
+
+        p1, st, err = cv2.calcOpticalFlowPyrLK(
+            old_gray,
+            current_gray, 
+            p0, 
+            None, 
+            **lk_params
+        )
+
+        return p1
+
+
+
+
 def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
-
-
     tps = cv2.createThinPlateSplineShapeTransformer()
 
-    source_pts = np.array(vid_A.landmark_coord).astype(np.float32)
-    target_pts = np.array(vid_B.landmark_coord).astype(np.float32)
+    source_pts = np.array(vid_A.landmark_coord[0:47]).astype(np.float32)
+    target_pts = np.array(vid_B.landmark_coord[0:47]).astype(np.float32)
 
     source_pts = source_pts.reshape(-1, len(source_pts), 2)
     target_pts = target_pts.reshape(-1, len(target_pts), 2)
@@ -132,7 +173,6 @@ def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
         cv2.NORMAL_CLONE
     )
 
-    
     return swapped
 
 def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
@@ -182,12 +222,16 @@ if __name__ == '__main__':
         frame_A = cv2.resize(frame_A, (1280, 720))
         frame_B = cv2.resize(frame_B, (1280, 720))
 
+          # save frames
+        vid_A.frame_list.append(frame_A)
+        vid_B.frame_list.append(frame_B)
+
 
         # processed_frame_A = vid_A.landmark_detect(frame_A, False)
         # processed_frame_B = vid_B.landmark_detect(frame_B, False)
 
-        vid_A.landmark_detect(frame_A, False)
-        vid_B.landmark_detect(frame_B, False)
+        vid_A.landmark_detect(frame_A, True)
+        vid_B.landmark_detect(frame_B, True)
 
         # processed_frame_A = vid_A.triangular_swap(
         #     frame_A,
@@ -229,8 +273,16 @@ if __name__ == '__main__':
             frame_A
         )
 
-        vid_B.out.write(processed_frame_A)
-        vid_A.out.write(processed_frame_B)
+        # vid_A.out.write(processed_frame_A)
+        # vid_B.out.write(processed_frame_B)
+
+        # in case frame was resized for tps:
+        vid_A.out.write(cv2.resize(
+            processed_frame_A, (vid_A.orig_w, vid_A.orig_h)
+        ))
+        vid_B.out.write(cv2.resize(
+            processed_frame_B, (vid_B.orig_w, vid_B.orig_h)
+        ))
 
         cv2.imshow("vidA", processed_frame_A)
         cv2.imshow("vidB", processed_frame_B)
