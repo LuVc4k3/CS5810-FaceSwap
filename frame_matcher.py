@@ -17,7 +17,7 @@ def frame_matcher(a,b):
             batch_range=indexes[i]-indexes[i-1]
             margin=1/(batch_range)
             for j in range(batch_range):
-                a_m_b[index]=margin*a_m_b[i-1]+((1-margin)*a_m_b[i])
+                a_m_b[index]=margin*b[i-1]+((1-margin)*b[i])
                 index+=1
     return a_m_b,b
                 
