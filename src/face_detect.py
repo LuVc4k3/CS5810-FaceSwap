@@ -262,7 +262,7 @@ if __name__ == '__main__':
         vid_B.frame_list.append(frame_B)
 
         # with optical flow enabled
-        land_mark_A = vid_A.landmark_detect(frame_A, True)
+        vid_A.landmark_detect(frame_A, True)
         vid_B.landmark_detect(frame_B, True)
 
         ''' Triangulation swap '''
@@ -296,12 +296,9 @@ if __name__ == '__main__':
         )
 
         # in case frame was resized for tps, restore to original size
-        if not vid_B_finished:
-            vid_B.out.write(cv2.resize(processed_frame_B, (vid_B.orig_w, vid_B.orig_h))) 
-
-        if not vid_A_finished:
-            vid_A.out.write(cv2.resize(processed_frame_A, (vid_A.orig_w, vid_A.orig_h)))
-        
+        vid_B.out.write(cv2.resize(processed_frame_B, (vid_B.orig_w, vid_B.orig_h))) 
+        vid_A.out.write(cv2.resize(processed_frame_A, (vid_A.orig_w, vid_A.orig_h)))
+    
         cv2.imshow("vidA", processed_frame_A)
         cv2.imshow("vidB", processed_frame_B)
 
