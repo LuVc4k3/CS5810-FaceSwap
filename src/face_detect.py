@@ -17,7 +17,7 @@ class face_vid():
         self.path = vid_path
         self.cap = cv2.VideoCapture(self.path)
         self.out = cv2.VideoWriter(
-            self.path + "_OpticalFlow_tps_swapped.avi",
+            self.path + "_OpticalFlow_triangulation.avi",
             cv2.VideoWriter_fourcc('M','J','P','G'), 
             25, 
             (int(self.cap.get(3)), int(self.cap.get(4)))
@@ -164,6 +164,21 @@ class face_vid():
 
         return p1
 
+    def draw_triangles(self):
+        tri_frame = self.masked_face
+        pt1 = []
+        for tri in self.triangle_vertices:
+            pt1 = self.landmark_coord[int(tri[0])]
+            pt2 = self.landmark_coord[int(tri[1])]
+            pt3 = self.landmark_coord[int(tri[2])]
+            cv2.line(tri_frame, pt1, pt2, (0, 0, 255), 1)
+            cv2.line(tri_frame, pt2, pt3, (0, 0, 255), 1)
+            cv2.line(tri_frame, pt1, pt3, (0, 0, 255), 1)
+
+        cv2.imshow("trigulated frame:", tri_frame)
+
+
+
 def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
     tps = cv2.createThinPlateSplineShapeTransformer()
 
@@ -191,11 +206,14 @@ def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
 
     return swapped
 
-def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
+def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, plot_triangle = False) -> None:
     # gen triangle for target
     vid_B.gen_triangle()
     # gen matching triangle for source
     vid_A.gen_matched_triangle(vid_B.triangle_vertices)
+
+    if plot_triangle:
+        vid_B.draw_triangles()
 
     # ended matching triangles
     copy_frame = frame_B.copy()
@@ -217,8 +235,8 @@ def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
 # interpolate frame if teh frame count is different 
 if __name__ == '__main__':
     # TODO: Handling of vids with different duration?
-    vid_A = face_vid('resources/jaws2.m4v')
-    vid_B = face_vid('resources/FrankUnderwood.mp4')
+    vid_A = face_vid('resources/FrankUnderwood.mp4')
+    vid_B = face_vid('resources/B_cropped.mp4')
 
     # while vid_A.cap.isOpened():
     #     ret_A, frame_A = vid_A.cap.read()
@@ -254,8 +272,8 @@ if __name__ == '__main__':
             break
 
         # optional for tps
-        frame_A = cv2.resize(frame_A, (1280, 720))
-        frame_B = cv2.resize(frame_B, (1280, 720))
+        # frame_A = cv2.resize(frame_A, (1280, 720))
+        # frame_B = cv2.resize(frame_B, (1280, 720))
 
         # save frames
         vid_A.frame_list.append(frame_A)
@@ -265,42 +283,61 @@ if __name__ == '__main__':
         vid_A.landmark_detect(frame_A, True)
         vid_B.landmark_detect(frame_B, True)
 
+         # stretch mouth
+        vid_B.landmark_coord[48] = (vid_B.landmark_coord[48][0] - 3, vid_B.landmark_coord[48][1]-2)
+        vid_B.landmark_coord[54] = (vid_B.landmark_coord[54][0] + 3, vid_B.landmark_coord[54][1]-2)
+
+        # stretch eye
+        eye_offset = 1
+        vid_B.landmark_coord[37] = (vid_B.landmark_coord[37][0], vid_B.landmark_coord[37][1]+eye_offset)
+        vid_B.landmark_coord[38] = (vid_B.landmark_coord[38][0], vid_B.landmark_coord[38][1]+eye_offset)
+
+        vid_B.landmark_coord[41] = (vid_B.landmark_coord[41][0], vid_B.landmark_coord[41][1] - eye_offset)
+        vid_B.landmark_coord[40] = (vid_B.landmark_coord[40][0] + 3, vid_B.landmark_coord[40][1]-eye_offset)
+
+        vid_B.landmark_coord[43] = (vid_B.landmark_coord[43][0], vid_B.landmark_coord[43][1]+eye_offset)
+        vid_B.landmark_coord[44] = (vid_B.landmark_coord[44][0], vid_B.landmark_coord[44][1]+eye_offset)
+
+        vid_B.landmark_coord[46] = (vid_B.landmark_coord[46][0], vid_B.landmark_coord[46][1] - eye_offset)
+        vid_B.landmark_coord[47] = (vid_B.landmark_coord[47][0] + 3, vid_B.landmark_coord[47][1]-eye_offset)
         ''' Triangulation swap '''
-        # processed_frame_A = triangular_swap(
+        processed_frame_A = triangular_swap(
+            vid_A,
+            frame_A,
+            vid_B,
+            frame_B,
+            True
+        )
+
+        # processed_frame_B = triangular_swap(
+        #     vid_B,
+        #     frame_B,
+        #     vid_A,
+        #     frame_A,
+        #     True
+        # )
+
+        ''' TPS swap '''
+   
+        # processed_frame_A = tps_swap(
         #     vid_A,
         #     frame_A,
         #     vid_B,
         #     frame_B
         # )
-
-        # processed_frame_B = triangular_swap(
+        # processed_frame_B = tps_swap(
         #     vid_B,
         #     frame_B,
         #     vid_A,
         #     frame_A
         # )
 
-        ''' TPS sawp '''
-   
-        processed_frame_A = tps_swap(
-            vid_A,
-            frame_A,
-            vid_B,
-            frame_B
-        )
-        processed_frame_B = tps_swap(
-            vid_B,
-            frame_B,
-            vid_A,
-            frame_A
-        )
-
         # in case frame was resized for tps, restore to original size
-        vid_B.out.write(cv2.resize(processed_frame_B, (vid_B.orig_w, vid_B.orig_h))) 
+        # vid_B.out.write(cv2.resize(processed_frame_B, (vid_B.orig_w, vid_B.orig_h))) 
         vid_A.out.write(cv2.resize(processed_frame_A, (vid_A.orig_w, vid_A.orig_h)))
     
         cv2.imshow("vidA", processed_frame_A)
-        cv2.imshow("vidB", processed_frame_B)
+        # cv2.imshow("vidB", processed_frame_B)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
