@@ -96,3 +96,8 @@ def warpTriangle(img1, img2, t1, t2) :
     img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] * ( (1.0, 1.0, 1.0) - mask )
      
     img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Rect 
+
+def sorted_faces(faces):
+    faces_new = sorted(faces, key=lambda x: x.left())
+
+    return faces_new
