@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 
 def rectContains(rect, point) :
     if point[0] < rect[0] :
@@ -96,3 +97,33 @@ def warpTriangle(img1, img2, t1, t2) :
     img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] * ( (1.0, 1.0, 1.0) - mask )
      
     img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Rect 
+
+def preprocess(target, average_face):
+    if len(target.shape) == 3:
+        target = cv2.cvtColor(target, cv2.COLOR_BGR2GRAY)
+    # resize
+    target_resized = cv2.resize(target, (64, 64), interpolation = cv2.INTER_AREA)
+    # reshape
+    target_vector = target_resized.reshape((64*64,))
+    # substract mean
+    target_vector = target_vector - average_face
+    return target_vector
+
+def proj2face_space(target_vector, eigenfaces, show_graphic = False):
+    weight = eigenfaces @ target_vector.T
+    weight = weight/np.linalg.norm(weight, ord=1)
+    output = weight.T @ eigenfaces
+
+    if show_graphic:
+        plt.title('Original Image')
+        plt.imshow(target_vector.reshape((64, 64)), cmap = 'gray')
+        plt.show()
+
+        plt.title('Face Space Image')
+        plt.imshow(output.reshape((64, 64)), cmap = 'gray')
+        plt.show()
+
+    return  output
+
+def dist2face_space(target_vector, face_space_vector):
+    return np.linalg.norm( face_space_vector - target_vector)

@@ -1,28 +1,29 @@
-import argparse
-
 import numpy as np
 import cv2
-import time
+import pickle
 import dlib
 from helpers import *
-from scipy.spatial import ConvexHull
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor("resources/shape_predictor_68_face_landmarks.dat")
 
+average_face = pickle.load(open("src/average_face.p", "rb"))
+eigenfaces = pickle.load(open("src/eigenfaces.p", "rb"))
+
 OPT_FLOW_WEIGHT = 0.7
+SCORE_DIFF_THRESHOLD = 750
 
 class face_vid():
     def __init__(self, vid_path):
         self.path = vid_path
         self.cap = cv2.VideoCapture(self.path)
         self.out = cv2.VideoWriter(
-            self.path + "_OpticalFlow_triangulation.avi",
+            self.path + "_OpticalFlow_tps_withFaceCheck.avi",
             cv2.VideoWriter_fourcc('M','J','P','G'), 
             25, 
             (int(self.cap.get(3)), int(self.cap.get(4)))
         )
-
+        self.quality_score = None
         self.orig_w = round(self.cap.get(3))
         self.orig_h = round(self.cap.get(4))
         self.frame_list = []
@@ -105,7 +106,7 @@ class face_vid():
         """
         self.triangle_vertices = calculateDelaunayTriangles(
             self.rect, 
-            self.landmark_coord
+            self.landmark_coord[0:47]
         )
         if len(self.triangle_vertices) == 0:
             print("No Triangle generated")
@@ -176,10 +177,9 @@ class face_vid():
             cv2.line(tri_frame, pt1, pt3, (0, 0, 255), 1)
 
         cv2.imshow("trigulated frame:", tri_frame)
+        cv2.waitKey()
 
-
-
-def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
+def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, frame_count, check_quality = False) -> None:
     tps = cv2.createThinPlateSplineShapeTransformer()
 
     source_pts = np.array(vid_A.landmark_coord[0:47]).astype(np.float32)
@@ -195,7 +195,30 @@ def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
     tps.estimateTransformation(target_pts, source_pts, matches)
 
     warped = tps.warpImage(vid_A.masked_face)
-    
+
+    if check_quality:
+        current_quality = check_warped_face_quality(vid_B, warped)
+        print(f"vid {vid_B.path} \t Score: {current_quality}")
+        if frame_count == 0:
+            vid_B.quality_score = current_quality
+        else:
+            if abs(current_quality - vid_B.quality_score) >= SCORE_DIFF_THRESHOLD:
+                print(f"Bad frame detected, score is : {current_quality}")
+                # cv2.imshow("bad face", warped)
+                # cv2.waitKey()
+                print("redoing face swap with last known good frame starting")
+                good_frame_A = vid_A.frame_list[-2]
+                vid_A.landmark_detect(good_frame_A)
+                return tps_swap(
+                    vid_A,
+                    good_frame_A,
+                    vid_B,
+                    frame_B,
+                    frame_count,
+                )
+            else:
+                vid_B.quality_score = current_quality
+
     swapped = cv2.seamlessClone(
         np.uint8(warped),
         frame_B,
@@ -206,10 +229,14 @@ def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B) -> None:
 
     return swapped
 
-def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, plot_triangle = False) -> None:
-    # gen triangle for target
-    vid_B.gen_triangle()
-    # gen matching triangle for source
+def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, first_frame = False, check_quality = False, plot_triangle = False) -> None:
+    if first_frame:
+        # gen triangle for target
+        vid_B.gen_triangle()
+        # gen matching triangle for source
+    else:
+        vid_B.gen_matched_triangle(vid_B.triangle_vertices)
+
     vid_A.gen_matched_triangle(vid_B.triangle_vertices)
 
     if plot_triangle:
@@ -231,27 +258,30 @@ def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, plot_tri
 
     return swapped
 
+def check_warped_face_quality(vid: face_vid, frame: np.array) -> int:
+    # cv2.imshow("face", frame)
+    # cv2.waitKey()
+    rect = vid.rect
+    face = frame[rect[1]:(rect[1]+rect[3]), rect[0]:(rect[0]+rect[2]), :]
+    # cv2.imshow("extracted_face", face)
+    # cv2.waitKey()
+
+    target_vector = preprocess(face, average_face)
+    face_space_vector = proj2face_space(target_vector, eigenfaces)
+    face_distance = dist2face_space(target_vector, face_space_vector)
+    return face_distance
+
 #emotion animation machine learning
 # interpolate frame if teh frame count is different 
 if __name__ == '__main__':
     # TODO: Handling of vids with different duration?
-    vid_A = face_vid('resources/FrankUnderwood.mp4')
-    vid_B = face_vid('resources/B_cropped.mp4')
+    vid_A = face_vid('resources/MrRobot.mp4')
+    vid_B = face_vid('resources/FrankUnderwood.mp4')
 
-    # while vid_A.cap.isOpened():
-    #     ret_A, frame_A = vid_A.cap.read()
-    #     time.sleep(0.1)
-    #     cv2.imshow("Frame A", frame_A)
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
-
-    # vid_A = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\A_cropped.mp4')
-    # vid_B = face_vid('G:\\Softwares\\Coding\\Python\\Penn-MSE\\Edu-CIS5810\\CS5810-FaceSwap\\resources\\B_cropped.mp4')
     frame_count = 0
     vid_A_finished, vid_B_finished = False, False
 
     while (vid_A.cap.isOpened() and vid_B.cap.isOpened()):
-        frame_count += 1
         print(f"frame count: {frame_count}")
         ret_A, frame_A = vid_A.cap.read()
         ret_B, frame_B = vid_B.cap.read()
@@ -272,8 +302,8 @@ if __name__ == '__main__':
             break
 
         # optional for tps
-        # frame_A = cv2.resize(frame_A, (1280, 720))
-        # frame_B = cv2.resize(frame_B, (1280, 720))
+        frame_A = cv2.resize(frame_A, (1280, 720))
+        frame_B = cv2.resize(frame_B, (1280, 720))
 
         # save frames
         vid_A.frame_list.append(frame_A)
@@ -283,61 +313,67 @@ if __name__ == '__main__':
         vid_A.landmark_detect(frame_A, True)
         vid_B.landmark_detect(frame_B, True)
 
-         # stretch mouth
-        vid_B.landmark_coord[48] = (vid_B.landmark_coord[48][0] - 3, vid_B.landmark_coord[48][1]-2)
-        vid_B.landmark_coord[54] = (vid_B.landmark_coord[54][0] + 3, vid_B.landmark_coord[54][1]-2)
+        # #  # stretch mouth
+        # vid_B.landmark_coord[48] = (vid_B.landmark_coord[48][0] - 5, vid_B.landmark_coord[48][1]-3)
+        # vid_B.landmark_coord[54] = (vid_B.landmark_coord[54][0] + 5, vid_B.landmark_coord[54][1]-3)
 
-        # stretch eye
-        eye_offset = 1
-        vid_B.landmark_coord[37] = (vid_B.landmark_coord[37][0], vid_B.landmark_coord[37][1]+eye_offset)
-        vid_B.landmark_coord[38] = (vid_B.landmark_coord[38][0], vid_B.landmark_coord[38][1]+eye_offset)
+        # # # stretch eye
+        # eye_offset = 1
+        # vid_B.landmark_coord[37] = (vid_B.landmark_coord[37][0], vid_B.landmark_coord[37][1]+eye_offset)
+        # vid_B.landmark_coord[38] = (vid_B.landmark_coord[38][0], vid_B.landmark_coord[38][1]+eye_offset)
 
-        vid_B.landmark_coord[41] = (vid_B.landmark_coord[41][0], vid_B.landmark_coord[41][1] - eye_offset)
-        vid_B.landmark_coord[40] = (vid_B.landmark_coord[40][0] + 3, vid_B.landmark_coord[40][1]-eye_offset)
+        # vid_B.landmark_coord[41] = (vid_B.landmark_coord[41][0], vid_B.landmark_coord[41][1] - eye_offset)
+        # vid_B.landmark_coord[40] = (vid_B.landmark_coord[40][0] + 3, vid_B.landmark_coord[40][1]-eye_offset)
 
-        vid_B.landmark_coord[43] = (vid_B.landmark_coord[43][0], vid_B.landmark_coord[43][1]+eye_offset)
-        vid_B.landmark_coord[44] = (vid_B.landmark_coord[44][0], vid_B.landmark_coord[44][1]+eye_offset)
+        # vid_B.landmark_coord[43] = (vid_B.landmark_coord[43][0], vid_B.landmark_coord[43][1]+eye_offset)
+        # vid_B.landmark_coord[44] = (vid_B.landmark_coord[44][0], vid_B.landmark_coord[44][1]+eye_offset)
 
-        vid_B.landmark_coord[46] = (vid_B.landmark_coord[46][0], vid_B.landmark_coord[46][1] - eye_offset)
-        vid_B.landmark_coord[47] = (vid_B.landmark_coord[47][0] + 3, vid_B.landmark_coord[47][1]-eye_offset)
+        # vid_B.landmark_coord[46] = (vid_B.landmark_coord[46][0], vid_B.landmark_coord[46][1] - eye_offset)
+        # vid_B.landmark_coord[47] = (vid_B.landmark_coord[47][0] + 3, vid_B.landmark_coord[47][1]-eye_offset)
+        
         ''' Triangulation swap '''
-        processed_frame_A = triangular_swap(
-            vid_A,
-            frame_A,
-            vid_B,
-            frame_B,
-            True
-        )
+        # processed_frame_A = triangular_swap(
+        #     vid_A,
+        #     frame_A,
+        #     vid_B,
+        #     frame_B,
+        #     frame_count==1
+        # )
 
         # processed_frame_B = triangular_swap(
         #     vid_B,
         #     frame_B,
         #     vid_A,
         #     frame_A,
-        #     True
+        #     frame_count == 1
         # )
 
         ''' TPS swap '''
    
-        # processed_frame_A = tps_swap(
-        #     vid_A,
-        #     frame_A,
-        #     vid_B,
-        #     frame_B
-        # )
-        # processed_frame_B = tps_swap(
-        #     vid_B,
-        #     frame_B,
-        #     vid_A,
-        #     frame_A
-        # )
+        processed_frame_A = tps_swap(
+            vid_A,
+            frame_A,
+            vid_B,
+            frame_B,
+            frame_count,
+            True
+        )
+        processed_frame_B = tps_swap(
+            vid_B,
+            frame_B,
+            vid_A,
+            frame_A,
+            frame_count,
+            True
+        )
 
         # in case frame was resized for tps, restore to original size
-        # vid_B.out.write(cv2.resize(processed_frame_B, (vid_B.orig_w, vid_B.orig_h))) 
+        vid_B.out.write(cv2.resize(processed_frame_B, (vid_B.orig_w, vid_B.orig_h))) 
         vid_A.out.write(cv2.resize(processed_frame_A, (vid_A.orig_w, vid_A.orig_h)))
     
         cv2.imshow("vidA", processed_frame_A)
-        # cv2.imshow("vidB", processed_frame_B)
+        cv2.imshow("vidB", processed_frame_B)
+        frame_count += 1
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
