@@ -98,6 +98,7 @@ def warpTriangle(img1, img2, t1, t2) :
      
     img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Rect 
 
+<<<<<<< HEAD
 def preprocess(target, average_face):
     if len(target.shape) == 3:
         target = cv2.cvtColor(target, cv2.COLOR_BGR2GRAY)
@@ -127,3 +128,9 @@ def proj2face_space(target_vector, eigenfaces, show_graphic = False):
 
 def dist2face_space(target_vector, face_space_vector):
     return np.linalg.norm( face_space_vector - target_vector)
+=======
+def sorted_faces(faces):
+    faces_new = sorted(faces, key=lambda x: x.left())
+
+    return faces_new
+>>>>>>> ba5c0ad9e406c0ac7d1c9037a7caa35d8fb80157
