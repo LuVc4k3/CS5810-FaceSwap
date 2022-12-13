@@ -30,6 +30,17 @@ class face_vid():
         self.landmark_coord = []
 
     def landmark_detect(self, frame, use_optical_flow = False, show_landmark=False):
+        """_summary_
+        Perform landmark detection. Save the landmark coordinates, generate mask
+        based on the convex hull of the face 
+        Args:
+            frame (np.array): image
+            use_optical_flow (bool, optional): Perform opt flow. Defaults to False.
+            show_landmark (bool, optional): Show landmark. Defaults to False.
+
+        Returns:
+            np.array: if show landmark return frame with landmark graphic
+        """
         self.convex_hull = []
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         self.mask = np.zeros_like(gray)
@@ -142,8 +153,16 @@ class face_vid():
         self.out.release()
 
     def _optical_flow_track(self, old_frame, current_frame, p0):
-        # print("optical_flow")
-        # default lk params
+        """_summary_
+        Track optical flow between 2 frames
+        Args:
+            old_frame (_type_): previous frame
+            current_frame (_type_): current frame
+            p0 (list(tuple)): previous points to be tracked
+
+        Returns:
+            list(tuple): tracked points in current frame
+        """
         lk_params = dict( 
             winSize  = (25, 25),
             maxLevel = 2,
@@ -180,6 +199,19 @@ class face_vid():
         cv2.waitKey()
 
 def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, frame_count, check_quality = False) -> None:
+    """_summary_
+    Use thin plate spline to swap face from vid A to vid B.
+    Args:
+        vid_A (face_vid): source vid obj
+        frame_A (np.array): source frame
+        vid_B (face_vid): target vid obj
+        frame_B (np.array): target frame
+        frame_count (int): frame count thus far
+        check_quality (bool, optional): Check warped face quality. Defaults to False.
+
+    Returns:
+        np.array: swapped face frame
+    """
     tps = cv2.createThinPlateSplineShapeTransformer()
 
     source_pts = np.array(vid_A.landmark_coord[0:47]).astype(np.float32)
@@ -230,6 +262,20 @@ def tps_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, frame_count, ch
     return swapped
 
 def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, first_frame = False, check_quality = False, plot_triangle = False) -> None:
+    """_summary_
+    Use thin plate spline to swap face from vid A to vid B.
+    Args:
+        vid_A (face_vid): source vid obj
+        frame_A (np.array): source frame
+        vid_B (face_vid): target vid obj
+        frame_B (np.array): target frame
+        first_frame (bool, optional): check if is first frame loaded. Defaults to False.
+        check_quality (bool, optional): Check warped face quality. Defaults to False.
+        plot_triangle (bool, optional): visualize triangulations. Defaults to False.
+
+    Returns:
+        np.array: swapped face frame
+    """
     if first_frame:
         # gen triangle for target
         vid_B.gen_triangle()
@@ -259,6 +305,15 @@ def triangular_swap(vid_A: face_vid, frame_A, vid_B: face_vid, frame_B, first_fr
     return swapped
 
 def check_warped_face_quality(vid: face_vid, frame: np.array) -> int:
+    """_summary_
+    Getting distance to average face space
+    Args:
+        vid (face_vid): vid_obj
+        frame (np.array): frame
+
+    Returns:
+        int: distance
+    """
     # cv2.imshow("face", frame)
     # cv2.waitKey()
     rect = vid.rect
@@ -270,6 +325,22 @@ def check_warped_face_quality(vid: face_vid, frame: np.array) -> int:
     face_space_vector = proj2face_space(target_vector, eigenfaces)
     face_distance = dist2face_space(target_vector, face_space_vector)
     return face_distance
+
+# tested externally but not yet integrated
+def check_warped_face_quality_dlib(frame: np.array) -> bool:
+    """_summary_    
+    Check face quality by using dlib detection
+    Args:
+        frame (np.array): frame
+
+    Returns:
+        bool: detected face
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    rects = detector(gray)
+    return len(rects) != 0
+
+        
 
 #emotion animation machine learning
 # interpolate frame if teh frame count is different 
